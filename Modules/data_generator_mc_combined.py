@@ -43,13 +43,15 @@ class DataGenerator(keras.utils.Sequence):
 	def __data_generation(self, batch_indexes):
 		'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
 		# Initialization
+		p = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
 		X = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
 		mask = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
 		y1 = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
 
 		x_hat = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
 		S = np.empty((self.batch_size, self.dim[0],self.dim[1], int(self.n_channels / 2)), dtype = 'complex_')
-		x_ref = np.empty((self.batch_size, self.dim[0],self.dim[1]), dtype = 'complex_')
+		x_ref = np.empty((self.batch_size, self.dim[0],self.dim[1], 2))
+		k_masked = np.empty((self.batch_size, self.dim[0],self.dim[1], 2))
 
 		if self.shuffle:
 		    idxs = np.random.choice(np.arange(self.under_masks.shape[0], dtype=int), self.batch_size, replace = True)
@@ -84,23 +86,37 @@ class DataGenerator(keras.utils.Sequence):
 		x_hat = np.fft.ifft2(x_hat[:,:,:,::2]+1j*x_hat[:,:,:,1::2],axes = (1,2))
 
 		X[mask] = 0
+		aux = np.fft.ifft2(X[:,:,:,::2]+1j*X[:,:,:,1::2],axes = (1,2))
 
 		for i in range(self.batch_size):
 			abs_sqr = np.square(np.abs(x_hat[i]))
 			sqrt_sums =  np.sqrt(np.sum(abs_sqr, axis =(-1)))
-			x_combined_i = np.empty((self.dim[0],self.dim[1]), dtype = 'complex_')
-			x_combined_i.fill(0)
-			image_samples = y1[i,:,:,::2] + 1j*y1[i,:,:,1::2]
+
+			x_ref_combined_i = np.empty((self.dim[0],self.dim[1]), dtype = 'complex_')
+			x_ref_combined_i.fill(0)
+
+			x_masked_combined_i = np.empty((self.dim[0],self.dim[1]), dtype = 'complex_')
+			x_ref_combined_i.fill(0)
+
+			x_ref_batch = y1[i,:,:,::2] + 1j*y1[i,:,:,1::2]
+			x_masked_batch = aux[i]
 			for j in range(x_hat[i].shape[2]):
 				S[i,:,:,j] = x_hat[i,:,:,j] / sqrt_sums
-				image_sample = image_samples[:,:,j]
-				x_combined_i = x_combined_i + ( S[i,:,:,j] * image_sample)
-			x_ref[i] = x_combined_i
-		
 
-		x_ref = x_ref/self.norm
+				x_ref_combined_i = x_ref_combined_i + ( S[i,:,:,j] * x_ref_batch[:,:,j])
+				x_masked_combined_i = x_masked_combined_i + ( S[i,:,:,j] * x_masked_batch[:,:,j])
+
+			x_ref[i, :, :, 0] = x_ref_combined_i.real
+			x_ref[i, :, :, 1] = x_ref_combined_i.imag
+
+			k_masked_i = np.fft.fft2(x_masked_combined_i)
+			k_masked[i, :, :, 0] = k_masked_i.real
+			k_masked[i, :, :, 1] = k_masked_i.imag
+
+
+		# x_ref = x_ref/self.norm
 		y1 = y1/self.norm  # Normalized fully sampled multi-channel reference. Could be converted to root sum of squares.
                       # it depends on how teams model the problem
 		X = X/self.norm # Input is the zero-filled reconstruction. Suitable for image-domain methods. Change the code to not 
                    # compute the iFFT if input needs to be in k-space.
-		return [X,mask,S], x_ref
+		return [k_masked,mask,S], x_ref
