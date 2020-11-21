@@ -86,7 +86,7 @@ class DataGenerator(keras.utils.Sequence):
 		x_hat = np.fft.ifft2(x_hat[:,:,:,::2]+1j*x_hat[:,:,:,1::2],axes = (1,2))
 
 		X[mask] = 0
-		aux = np.fft.ifft2(X[:,:,:,::2]+1j*X[:,:,:,1::2],axes = (1,2))
+		new_var = np.fft.ifft2(X[:,:,:,::2]+1j*X[:,:,:,1::2],axes = (1,2))
 
 		for i in range(self.batch_size):
 			abs_sqr = np.square(np.abs(x_hat[i]))
@@ -96,10 +96,10 @@ class DataGenerator(keras.utils.Sequence):
 			x_ref_combined_i.fill(0)
 
 			x_masked_combined_i = np.empty((self.dim[0],self.dim[1]), dtype = 'complex_')
-			x_ref_combined_i.fill(0)
+			x_masked_combined_i.fill(0)
 
 			x_ref_batch = y1[i,:,:,::2] + 1j*y1[i,:,:,1::2]
-			x_masked_batch = aux[i]
+			x_masked_batch = new_var[i]
 			for j in range(x_hat[i].shape[2]):
 				S[i,:,:,j] = x_hat[i,:,:,j] / sqrt_sums
 
@@ -119,4 +119,4 @@ class DataGenerator(keras.utils.Sequence):
                       # it depends on how teams model the problem
 		X = X/self.norm # Input is the zero-filled reconstruction. Suitable for image-domain methods. Change the code to not 
                    # compute the iFFT if input needs to be in k-space.
-		return [k_masked,mask,S], x_ref
+		return [k_masked,X,mask,S], x_ref
