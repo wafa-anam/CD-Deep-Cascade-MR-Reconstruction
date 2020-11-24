@@ -170,13 +170,13 @@ def DC_block(rec,mask,sampled_kspace,sensitivities,channels,kspace = False):
         rec_kspace = rec
     else:
         rec_kspace = Lambda(fft_layer)(rec)
-    decoupled_rec = decouple_k_space(rec_kspace, sensitivities)
-    decoupled_sampled = decouple_k_space(sampled_kspace, sensitivities)
+    decoupled_rec = decouple_k_space(rec_kspace, sensitivities, channels)
+    decoupled_sampled = decouple_k_space(sampled_kspace, sensitivities, channels)
     rec_kspace_dc =  Multiply()([decoupled_rec,mask])
     rec_kspace_dc = Add()([rec_kspace_dc,decoupled_sampled])
-    return combine_k_space(rec_kspace_dc, sensitivities)
+    return combine_k_space(rec_kspace_dc)
 
-def decouple_k_space(combined_k_space, S):
+def decouple_k_space(combined_k_space, S, channels):
     tf.keras.backend.set_floatx('float64')
     combined_image = Lambda(ifft_layer)(combined_k_space)
     real = Lambda(lambda image: image[:, :, :, 0])(combined_image)
@@ -184,7 +184,8 @@ def decouple_k_space(combined_k_space, S):
     image_complex = tf.complex(real, imag)  # Make complex-valued tensor
 
     rank_4_image = tf.expand_dims(image_complex, -1)
-    repeated_image = tf.broadcast_to(rank_4_image, S.shape)
+
+    repeated_image = tf.broadcast_to(rank_4_image, tf.shape(S))
     decoupled_images = tf.math.multiply(repeated_image, S)
 
     # get real and imaginary portions
@@ -202,38 +203,31 @@ def decouple_k_space(combined_k_space, S):
     return fft_layer_mc(image_complex_mc)
 
 
-def combine_k_space(k_space, S):
-    nchannels = S.shape[-1]
-    for i in range(0,nchannels,2):
-        ii = i * 2
+def combine_k_space(k_space):
+    nchannels = k_space.shape[-1]
+    for ii in range(0,nchannels,2):
         #get real and imaginary portions
         real = Lambda(lambda kspace : k_space[:,:,:,ii])(k_space)
         imag = Lambda(lambda k_space : k_space[:,:,:,ii+1])(k_space)
 
-        kspace_complex = tf.complex(real,imag) # Make complex-valued tensor
-        image_complex = tf.signal.ifft2d(kspace_complex)
-
-        temp = tf.math.multiply(image_complex, S[:,:,:,i])
-
-        # expand channels to tensorflow/keras format
-        real = tf.expand_dims(tf.math.real(temp),-1)
-        imag = tf.expand_dims(tf.math.imag(temp),-1)
+        real = tf.expand_dims(real,-1)
+        imag = tf.expand_dims(imag,-1)
         if ii == 0: 
-            # generate 2-channel representation of image domain
-            image_complex_2channel = tf.concat([real, imag], -1)
+            # generate 2-channel representation of k-space
+            k_space_2channel = tf.concat([real, imag], -1)
         else:
             combined = tf.concat([real, imag], -1)
-            image_complex_2channel = tf.math.add(image_complex_2channel, combined)
+            k_space_2channel = tf.math.add(k_space_2channel, combined)
 
-    return fft_layer(image_complex_2channel)
+    return k_space_2channel
 
 def deep_cascade_unet(depth_str='ki', H=218, W=170, Hpad = 3, Wpad = 3, kshape=(3, 3), channels = 12):
 
     parts = 2
 
     inputs = Input(shape=(H,W,parts))
-    mask = Input(shape=(H,W,parts))
-    sensitivities = Input(shape=(H,W,channels))
+    mask = Input(shape=(H,W,channels * 2))
+    sensitivities = Input(shape=(H,W,channels), dtype=tf.complex128)
     layers = [inputs]
     kspace_flag = True
     for ii in depth_str:
