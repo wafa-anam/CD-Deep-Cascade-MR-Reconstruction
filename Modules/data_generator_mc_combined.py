@@ -43,13 +43,9 @@ class DataGenerator(keras.utils.Sequence):
 	def __data_generation(self, batch_indexes):
 		'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
 		# Initialization
-		p = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
 		X = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
 		mask = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
-		y1 = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
 
-		x_hat = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
-		S = np.empty((self.batch_size, self.dim[0],self.dim[1], int(self.n_channels / 2)), dtype = 'complex_')
 		x_ref = np.empty((self.batch_size, self.dim[0],self.dim[1], 2))
 		k_masked = np.empty((self.batch_size, self.dim[0],self.dim[1], 2))
 
@@ -58,7 +54,6 @@ class DataGenerator(keras.utils.Sequence):
 		else:
 		    idxs = np.arange(0,self.batch_size,dtype = int)
 		mask = self.under_masks[idxs]
-
 
 		# Generate data
 		for ii in range(batch_indexes.shape[0]):
@@ -77,46 +72,35 @@ class DataGenerator(keras.utils.Sequence):
 					idx = int((kspace.shape[2] - self.dim[1])/2)
 					X[ii,:,:,:] = kspace[self.crop[0]+file_slice,:,idx:-idx,:]
 		aux = np.fft.ifft2(X[:,:,:,::2]+1j*X[:,:,:,1::2],axes = (1,2))
-		y1[:,:,:,::2] = aux.real
-		y1[:,:,:,1::2] = aux.imag
+		
+		# estimate sensititvity maps
+		complex_k_space = X[:,:,:,::2]+1j*X[:,:,:,1::2]
+		acs_k_space = complex_k_space * self.asc[np.newaxis, :, :, np.newaxis]
+		x_hat = np.fft.ifft2(acs_k_space,axes = (1,2))
+		norm_factor = np.sqrt(np.sum(np.square(np.abs(x_hat)), axis =(-1)))
+		S = x_hat / norm_factor[:, :, :, np.newaxis]
+		S = safe_divide(x_hat, norm_factor[:, :, :, np.newaxis])
 
-		for i in range(self.batch_size):
-			for j in range(self.n_channels):
-				x_hat[i,:,:,j] = self.asc * X[i,:,:,j] 
-		x_hat = np.fft.ifft2(x_hat[:,:,:,::2]+1j*x_hat[:,:,:,1::2],axes = (1,2))
-
+		# mask k-space
 		X[mask] = 0
-		new_var = np.fft.ifft2(X[:,:,:,::2]+1j*X[:,:,:,1::2],axes = (1,2))
+		masked_image = np.fft.ifft2(X[:,:,:,::2]+1j*X[:,:,:,1::2],axes = (1,2))
 
-		for i in range(self.batch_size):
-			abs_sqr = np.square(np.abs(x_hat[i]))
-			sqrt_sums =  np.sqrt(np.sum(abs_sqr, axis =(-1)))
+		# use sensitivities to combine masked data
+		combined_masked_img = np.sum(masked_image * S, axis =(-1))
+		combined_masked_k = np.fft.fft2(combined_masked_img, axes = (1,2))
+		k_masked[:,:,:,::2] = combined_masked_k[:,:,:,np.newaxis].real
+		k_masked[:,:,:,1::2] = combined_masked_k[:,:,:,np.newaxis].imag
 
-			x_ref_combined_i = np.empty((self.dim[0],self.dim[1]), dtype = 'complex_')
-			x_ref_combined_i.fill(0)
-
-			x_masked_combined_i = np.empty((self.dim[0],self.dim[1]), dtype = 'complex_')
-			x_masked_combined_i.fill(0)
-
-			x_ref_batch = y1[i,:,:,::2] + 1j*y1[i,:,:,1::2]
-			x_masked_batch = new_var[i]
-			for j in range(x_hat[i].shape[2]):
-				S[i,:,:,j] = x_hat[i,:,:,j] / sqrt_sums
-
-				x_ref_combined_i = x_ref_combined_i + ( S[i,:,:,j] * x_ref_batch[:,:,j])
-				x_masked_combined_i = x_masked_combined_i + ( S[i,:,:,j] * x_masked_batch[:,:,j])
-
-			x_ref[i, :, :, 0] = x_ref_combined_i.real
-			x_ref[i, :, :, 1] = x_ref_combined_i.imag
-
-			k_masked_i = np.fft.fft2(x_masked_combined_i)
-			k_masked[i, :, :, 0] = k_masked_i.real
-			k_masked[i, :, :, 1] = k_masked_i.imag
+		# use sensitivities to combine reference
+		combined_ref = np.sum(aux * S, axis =(-1))
+		x_ref[:,:,:,::2] = combined_ref[:,:,:,np.newaxis].real
+		x_ref[:,:,:,1::2] = combined_ref[:,:,:,np.newaxis].imag
 
 
-		# x_ref = x_ref/self.norm
-		y1 = y1/self.norm  # Normalized fully sampled multi-channel reference. Could be converted to root sum of squares.
-                      # it depends on how teams model the problem
 		X = X/self.norm # Input is the zero-filled reconstruction. Suitable for image-domain methods. Change the code to not 
                    # compute the iFFT if input needs to be in k-space.
+		
 		return [k_masked,X,mask,S], x_ref
+
+def safe_divide(a, b):
+	return np.divide(a, b, out=np.zeros_like(a), where=b!=0)
