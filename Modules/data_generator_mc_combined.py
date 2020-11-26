@@ -77,7 +77,9 @@ class DataGenerator(keras.utils.Sequence):
 		complex_k_space = X[:,:,:,::2]+1j*X[:,:,:,1::2]
 		acs_k_space = complex_k_space * self.asc[np.newaxis, :, :, np.newaxis]
 		x_hat = np.fft.ifft2(acs_k_space,axes = (1,2))
-		norm_factor = np.sqrt(np.sum(np.square(np.abs(x_hat)), axis =(-1)))
+		norm_factor = np.sqrt(np.sum(np.square(np.abs(x_hat)), axis =(-1))) 
+		#TODO ask about this (from data/transforms.py root sum of squares)
+		# norm_factor = np.sqrt(np.sum(x_hat.real **2 + x_hat.imag ** 2, axis =(-1))) 
 		S = x_hat / norm_factor[:, :, :, np.newaxis]
 		S = safe_divide(x_hat, norm_factor[:, :, :, np.newaxis])
 
@@ -86,13 +88,13 @@ class DataGenerator(keras.utils.Sequence):
 		masked_image = np.fft.ifft2(X[:,:,:,::2]+1j*X[:,:,:,1::2],axes = (1,2))
 
 		# use sensitivities to combine masked data
-		combined_masked_img = np.sum(masked_image * S, axis =(-1))
+		combined_masked_img = np.sum(np.conj(S) * masked_image, axis =(-1))
 		combined_masked_k = np.fft.fft2(combined_masked_img, axes = (1,2))
 		k_masked[:,:,:,::2] = combined_masked_k[:,:,:,np.newaxis].real
 		k_masked[:,:,:,1::2] = combined_masked_k[:,:,:,np.newaxis].imag
 
 		# use sensitivities to combine reference
-		combined_ref = np.sum(aux * S, axis =(-1))
+		combined_ref = np.sum(np.conj(S) * aux, axis =(-1))
 		x_ref[:,:,:,::2] = combined_ref[:,:,:,np.newaxis].real
 		x_ref[:,:,:,1::2] = combined_ref[:,:,:,np.newaxis].imag
 

@@ -170,13 +170,13 @@ def DC_block(rec,mask,sampled_kspace,sensitivities,channels,kspace = False):
         rec_kspace = rec
     else:
         rec_kspace = Lambda(fft_layer)(rec)
-    decoupled_rec = decouple_k_space(rec_kspace, sensitivities, channels)
-    decoupled_sampled = decouple_k_space(sampled_kspace, sensitivities, channels)
+    decoupled_rec = decouple_k_space(rec_kspace, sensitivities)
+    decoupled_sampled = decouple_k_space(sampled_kspace, sensitivities)
     rec_kspace_dc =  Multiply()([decoupled_rec,mask])
     rec_kspace_dc = Add()([rec_kspace_dc,decoupled_sampled])
     return combine_k_space(rec_kspace_dc)
 
-def decouple_k_space(combined_k_space, S, channels):
+def decouple_k_space(combined_k_space, S):
     tf.keras.backend.set_floatx('float64')
     combined_image = Lambda(ifft_layer)(combined_k_space)
     real = Lambda(lambda image: image[:, :, :, 0])(combined_image)
@@ -199,7 +199,6 @@ def decouple_k_space(combined_k_space, S, channels):
             image_complex_mc = tf.concat([real_to_concat, imag_to_concat], -1)
         else:
             image_complex_mc = tf.concat([image_complex_mc, real_to_concat, imag_to_concat], -1)
-
     return fft_layer_mc(image_complex_mc)
 
 
