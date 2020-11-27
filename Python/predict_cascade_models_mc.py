@@ -4,7 +4,6 @@
 # In[1]:
 
 
-get_ipython().run_line_magic('matplotlib', 'inline')
 import numpy as np
 import matplotlib.pylab as plt
 import os
@@ -98,7 +97,7 @@ for ii in test_files:
         model.load_weights(weights_path)   
 
     var_sampling_mask = ((kspace_test == 0)).astype(np.float32)
-    S = utils.estimate_sensitivity_maps(kspace_test)
+    S = utils.estimate_sensitivity_maps(kspace_test).astype(np.complex64)
     [k_space, weighted_k_space] = utils.combine_mc_kspace(kspace_test, S)
     pred = model.predict([ k_space, weighted_k_space, var_sampling_mask, S],batch_size = batch_size)*norm
     pred = pred[:,:,:,::2]+1j*pred[:,:,:,1::2]
