@@ -14,6 +14,7 @@ from tensorflow.keras.optimizers import  Adam
 import nibabel as nib
 import h5py
 import tensorflow as tf
+from skimage.morphology import area_opening
 
 # Include path to my modules
 MY_UTILS_PATH = "../Modules/"
