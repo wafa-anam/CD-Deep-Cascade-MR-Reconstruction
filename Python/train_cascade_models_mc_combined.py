@@ -62,7 +62,7 @@ val = glob.glob(val_path + "*.h5")
 # undersampling patterns - centered k-space - 100 pre computed patterns
 var_sampling_mask = np.load(sampling_mask_path)
 
-asc = area_opening(var_sampling_mask[0], area_threshold=10, connectivity=1, parent=None, tree_traverser=None)
+acs = area_opening(var_sampling_mask[0], area_threshold=10, connectivity=1, parent=None, tree_traverser=None)
 
 
 if verbose:
@@ -78,9 +78,9 @@ if verbose:
 # Replicate sampling mask across number of channels
 var_sampling_mask = np.repeat(var_sampling_mask[:, :, :, np.newaxis], 24, axis = -1) 
 
-train_generator = DataGenerator(train, dim = (H, W), under_masks = var_sampling_mask,  crop = crop, batch_size = batch_size, n_channels = channels * 2, nslices = nslices, shuffle=True, asc = asc)
+train_generator = DataGenerator(train, dim = (H, W), under_masks = var_sampling_mask,  crop = crop, batch_size = batch_size, n_channels = channels * 2, nslices = nslices, shuffle=True, acs = acs)
 
-val_generator = DataGenerator(val, dim = (H, W), under_masks = var_sampling_mask,  crop = crop, batch_size = batch_size, n_channels = channels * 2, nslices= nslices, shuffle=False, asc = asc)
+val_generator = DataGenerator(val, dim = (H, W), under_masks = var_sampling_mask,  crop = crop, batch_size = batch_size, n_channels = channels * 2, nslices= nslices, shuffle=False, acs = acs)
 
 
 

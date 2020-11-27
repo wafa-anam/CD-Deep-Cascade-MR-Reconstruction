@@ -22,7 +22,8 @@ if not MY_UTILS_PATH in sys.path:
     sys.path.append(MY_UTILS_PATH)
 
 # Import my modules
-import cs_models_mc as fsnet
+import cs_models_mc_combined as fsnet
+import utils
 
 physical_devices = tf.config.experimental.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(physical_devices[0], True)
@@ -32,12 +33,12 @@ tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 
 # Input parameters
-channels = 24
+channels = 12
 batch_size = 8
-weights_path = "../Models/weights_wwnet_ikik_mc_r5.h5"
+weights_path = "../Models/weights_wwnet_ikik_mcc_r5.h5"
 model_string = "ikik"
 test_path = "../../data/test_12_channel/Test-R=5/"
-results_path = "../WWnet-ikik-baseline/12-channel-R=5/"
+results_path = "../WWnet-ikik-combined/12-channel-R=5/"
 cascade = "unet"
 crop = (50,-50) # slices to crop
 verbose = True
@@ -97,7 +98,9 @@ for ii in test_files:
         model.load_weights(weights_path)   
 
     var_sampling_mask = ((kspace_test == 0)).astype(np.float32)
-    pred = model.predict([ kspace_test, var_sampling_mask],batch_size = batch_size)*norm
+    S = utils.estimate_sensitivity_maps(kspace_test)
+    [k_space, weighted_k_space] = utils.combine_mc_kspace(kspace_test, S)
+    pred = model.predict([ k_space, weighted_k_space, var_sampling_mask, S],batch_size = batch_size)*norm
     pred = pred[:,:,:,::2]+1j*pred[:,:,:,1::2]
     pred = np.sqrt((np.abs(pred)**2).sum(axis = -1)) # Root sum of squares
 

@@ -3,10 +3,11 @@ import h5py
 import os
 from tensorflow import keras
 from skimage.morphology import area_opening
+import utils
 
 class DataGenerator(keras.utils.Sequence):
 	'Generates data for Keras'
-	def __init__(self, list_IDs, dim, under_masks, crop, batch_size, asc, n_channels,nslices = 256, shuffle=True):
+	def __init__(self, list_IDs, dim, under_masks, crop, batch_size, acs, n_channels,nslices = 256, shuffle=True):
 		self.list_IDs = list_IDs
 		self.dim = dim
 		self.under_masks = ~under_masks
@@ -18,7 +19,7 @@ class DataGenerator(keras.utils.Sequence):
 		self.nsamples = len(self.list_IDs)*(self.nslices - self.crop[0] - self.crop[1])
 		self.on_epoch_end()
 		self.norm = np.sqrt(dim[0]*dim[1])
-		self.asc = asc
+		self.acs = acs
 	def __len__(self):
 		'Denotes the number of batches per epoch'
 		return int(np.floor(self.nsamples/ self.batch_size))
@@ -44,11 +45,7 @@ class DataGenerator(keras.utils.Sequence):
 		'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
 		# Initialization
 		X = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
-		norm_X = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
 		mask = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
-
-		x_ref = np.empty((self.batch_size, self.dim[0],self.dim[1], 2))
-		k_masked = np.empty((self.batch_size, self.dim[0],self.dim[1], 2))
 
 		if self.shuffle:
 		    idxs = np.random.choice(np.arange(self.under_masks.shape[0], dtype=int), self.batch_size, replace = True)
@@ -74,40 +71,19 @@ class DataGenerator(keras.utils.Sequence):
 					X[ii,:,:,:] = kspace[self.crop[0]+file_slice,:,idx:-idx,:]
 		aux = np.fft.ifft2(X[:,:,:,::2]+1j*X[:,:,:,1::2],axes = (1,2))
 		
-		# estimate sensititvity maps
-		complex_k_space = X[:,:,:,::2]+1j*X[:,:,:,1::2]
-		acs_k_space = complex_k_space * self.asc[np.newaxis, :, :, np.newaxis]
-		x_hat = np.fft.ifft2(acs_k_space,axes = (1,2))
-		norm_factor = np.sqrt(np.sum(np.square(np.abs(x_hat)), axis =(-1))) 
-		S = x_hat / norm_factor[:, :, :, np.newaxis]
-		S = safe_divide(x_hat, norm_factor[:, :, :, np.newaxis])
+		S = utils.estimate_sensitivity_maps(X, self.acs)
 
 		# mask k-space
 		X[mask] = 0
-		masked_image = np.fft.ifft2(X[:,:,:,::2]+1j*X[:,:,:,1::2],axes = (1,2))
 
 		# use sensitivities to combine masked data
-		norm_masked = np.conj(S) * masked_image
-		norm_masked = np.fft.fft2(norm_masked, axes = (1,2))
-		norm_X[:,:,:,::2] = norm_masked[:,:,:,:].real
-		norm_X[:,:,:,1::2] = norm_masked[:,:,:,:].imag
-
-
-		combined_masked_img = np.sum(np.conj(S) * masked_image, axis =(-1))
-		combined_masked_k = np.fft.fft2(combined_masked_img, axes = (1,2))
-		k_masked[:,:,:,::2] = combined_masked_k[:,:,:,np.newaxis].real
-		k_masked[:,:,:,1::2] = combined_masked_k[:,:,:,np.newaxis].imag
+		[k_masked, k_masked_weighted] = utils.combine_mc_kspace(X, S)
 
 		# use sensitivities to combine reference
-		combined_ref = np.sum(np.conj(S) * aux, axis =(-1))
-		x_ref[:,:,:,::2] = combined_ref[:,:,:,np.newaxis].real
-		x_ref[:,:,:,1::2] = combined_ref[:,:,:,np.newaxis].imag
+		x_ref = utils.combine_mc_image(aux, S)
 
 
 		X = X/self.norm # Input is the zero-filled reconstruction. Suitable for image-domain methods. Change the code to not 
                    # compute the iFFT if input needs to be in k-space.
 		
-		return [k_masked,norm_X,mask,S], x_ref
-
-def safe_divide(a, b):
-	return np.divide(a, b, out=np.zeros_like(a), where=b!=0)
+		return [k_masked,k_masked_weighted,mask,S], x_ref
