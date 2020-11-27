@@ -167,58 +167,45 @@ def DC_block(rec,mask,sampled_kspace,sensitivities,channels,kspace = False):
     """
 
     if kspace:
-        rec_kspace = rec
+        rec_image = Lambda(ifft_layer)(rec)
     else:
-        rec_kspace = Lambda(fft_layer)(rec)
-    decoupled_rec = decouple_k_space(rec_kspace, sensitivities)
-    decoupled_sampled = decouple_k_space(sampled_kspace, sensitivities)
-    rec_kspace_dc =  Multiply()([decoupled_rec,mask])
-    rec_kspace_dc = Add()([rec_kspace_dc,decoupled_sampled])
-    return combine_k_space(rec_kspace_dc)
+        rec_image = rec
 
-def decouple_k_space(combined_k_space, S):
-    tf.keras.backend.set_floatx('float64')
-    combined_image = Lambda(ifft_layer)(combined_k_space)
-    real = Lambda(lambda image: image[:, :, :, 0])(combined_image)
-    imag = Lambda(lambda image: image[:, :, :, 1])(combined_image)
+    decoupled_rec = decouple_image(rec_image, sensitivities)
+    rec_kspace_dc =  Multiply()([decoupled_rec,mask])
+    rec_kspace_dc = Add()([rec_kspace_dc,sampled_kspace])
+    return combine_k_space(rec_kspace_dc, sensitivities)
+
+def decouple_image(combined_image, S):
+    real = combined_image[:, :, :, 0]
+    imag = combined_image[:, :, :, 1]
+
     image_complex = tf.complex(real, imag)  # Make complex-valued tensor
 
     rank_4_image = tf.expand_dims(image_complex, -1)
-
-    repeated_image = tf.broadcast_to(rank_4_image, tf.shape(S))
-    decoupled_images = tf.math.multiply(repeated_image, S)
+    # repeated_image = tf.broadcast_to(rank_4_image, tf.shape(S))
+    decoupled_images = tf.math.multiply(rank_4_image, S)
 
     # get real and imaginary portions
     real = tf.math.real(decoupled_images)
     imag = tf.math.imag(decoupled_images)
 
+    layers = []
     for ii in range(S.shape[-1]):
-        real_to_concat = tf.expand_dims(real[:,:,:, ii],-1)
-        imag_to_concat = tf.expand_dims(imag[:,:,:, ii],-1)
-        if ii == 0:
-            image_complex_mc = tf.concat([real_to_concat, imag_to_concat], -1)
-        else:
-            image_complex_mc = tf.concat([image_complex_mc, real_to_concat, imag_to_concat], -1)
+        layers.append(tf.expand_dims(real[:,:,:, ii],-1))
+        layers.append(tf.expand_dims(imag[:,:,:, ii],-1))
+
+    image_complex_mc = tf.concat(layers, -1)    
     return fft_layer_mc(image_complex_mc)
 
-
-def combine_k_space(k_space):
+def combine_k_space(k_space, sensitivities):
     nchannels = k_space.shape[-1]
-    for ii in range(0,nchannels,2):
-        #get real and imaginary portions
-        real = Lambda(lambda kspace : k_space[:,:,:,ii])(k_space)
-        imag = Lambda(lambda k_space : k_space[:,:,:,ii+1])(k_space)
 
-        real = tf.expand_dims(real,-1)
-        imag = tf.expand_dims(imag,-1)
-        if ii == 0: 
-            # generate 2-channel representation of k-space
-            k_space_2channel = tf.concat([real, imag], -1)
-        else:
-            combined = tf.concat([real, imag], -1)
-            k_space_2channel = tf.math.add(k_space_2channel, combined)
+    real = tf.expand_dims(tf.keras.backend.sum(k_space[:,:,:,::2], axis=-1), -1)
+    imag = tf.expand_dims(tf.keras.backend.sum(k_space[:,:,:,1::2], axis=-1), -1)
 
-    return k_space_2channel
+    k_space_2channel_test = tf.concat([real, imag], -1)
+    return k_space_2channel_test
 
 def deep_cascade_unet(depth_str='ki', H=218, W=170, Hpad = 3, Wpad = 3, kshape=(3, 3), channels = 12):
 
@@ -226,7 +213,8 @@ def deep_cascade_unet(depth_str='ki', H=218, W=170, Hpad = 3, Wpad = 3, kshape=(
 
     inputs = Input(shape=(H,W,parts))
     mask = Input(shape=(H,W,channels * 2))
-    sensitivities = Input(shape=(H,W,channels), dtype=tf.complex128)
+    sensitivities = Input(shape=(H,W,channels), dtype=tf.complex64)
+    sampled_kspace = Input(shape=(H,W,channels * 2))
     layers = [inputs]
     kspace_flag = True
     for ii in depth_str:
@@ -241,8 +229,9 @@ def deep_cascade_unet(depth_str='ki', H=218, W=170, Hpad = 3, Wpad = 3, kshape=(
         layers.append(Cropping2D(cropping=(Hpad,Wpad))(layers[-1]))
         
         # Add DC block
-        layers.append(DC_block(layers[-1],mask,inputs,sensitivities,channels,kspace=kspace_flag))
+        layers.append(DC_block(layers[-1],mask,sampled_kspace,sensitivities,channels,kspace=kspace_flag))
         kspace_flag = True
     out = Lambda(ifft_layer)(layers[-1])
-    model = Model(inputs=[inputs,mask,sensitivities], outputs=out)
+
+    model = Model(inputs=[inputs,sampled_kspace,mask,sensitivities], outputs=out)
     return model

@@ -44,6 +44,7 @@ class DataGenerator(keras.utils.Sequence):
 		'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
 		# Initialization
 		X = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
+		norm_X = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
 		mask = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
 
 		x_ref = np.empty((self.batch_size, self.dim[0],self.dim[1], 2))
@@ -78,8 +79,6 @@ class DataGenerator(keras.utils.Sequence):
 		acs_k_space = complex_k_space * self.asc[np.newaxis, :, :, np.newaxis]
 		x_hat = np.fft.ifft2(acs_k_space,axes = (1,2))
 		norm_factor = np.sqrt(np.sum(np.square(np.abs(x_hat)), axis =(-1))) 
-		#TODO ask about this (from data/transforms.py root sum of squares)
-		# norm_factor = np.sqrt(np.sum(x_hat.real **2 + x_hat.imag ** 2, axis =(-1))) 
 		S = x_hat / norm_factor[:, :, :, np.newaxis]
 		S = safe_divide(x_hat, norm_factor[:, :, :, np.newaxis])
 
@@ -88,6 +87,12 @@ class DataGenerator(keras.utils.Sequence):
 		masked_image = np.fft.ifft2(X[:,:,:,::2]+1j*X[:,:,:,1::2],axes = (1,2))
 
 		# use sensitivities to combine masked data
+		norm_masked = np.conj(S) * masked_image
+		norm_masked = np.fft.fft2(norm_masked, axes = (1,2))
+		norm_X[:,:,:,::2] = norm_masked[:,:,:,:].real
+		norm_X[:,:,:,1::2] = norm_masked[:,:,:,:].imag
+
+
 		combined_masked_img = np.sum(np.conj(S) * masked_image, axis =(-1))
 		combined_masked_k = np.fft.fft2(combined_masked_img, axes = (1,2))
 		k_masked[:,:,:,::2] = combined_masked_k[:,:,:,np.newaxis].real
@@ -102,7 +107,7 @@ class DataGenerator(keras.utils.Sequence):
 		X = X/self.norm # Input is the zero-filled reconstruction. Suitable for image-domain methods. Change the code to not 
                    # compute the iFFT if input needs to be in k-space.
 		
-		return [k_masked,X,mask,S], x_ref
+		return [k_masked,norm_X,mask,S], x_ref
 
 def safe_divide(a, b):
 	return np.divide(a, b, out=np.zeros_like(a), where=b!=0)
