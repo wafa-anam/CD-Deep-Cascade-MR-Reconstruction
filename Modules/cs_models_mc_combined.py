@@ -213,7 +213,7 @@ def deep_cascade_unet(depth_str='ki', H=218, W=170, Hpad = 3, Wpad = 3, kshape=(
 
     inputs = Input(shape=(H,W,parts))
     mask = Input(shape=(H,W,channels * 2))
-    sensitivities = Input(shape=(H,W,channels), dtype=tf.complex128)
+    sensitivities = Input(shape=(H,W,channels), dtype=tf.complex64)
     sampled_kspace = Input(shape=(H,W,channels * 2))
     layers = [inputs]
     kspace_flag = True

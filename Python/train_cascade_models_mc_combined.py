@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[21]:
+# In[10]:
 
 
 # Importing standard libraries
@@ -24,13 +24,15 @@ if not MY_UTILS_PATH in sys.path:
 
 # Import my modules
 import cs_models_mc_combined as fsnet
+importlib.reload(fsnet)
+import cs_models_mc_combined as fsnet
 from data_generator_mc_combined import DataGenerator
 
 physical_devices = tf.config.experimental.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 
-# In[22]:
+# In[11]:
 
 
 # Input parameters
@@ -38,7 +40,7 @@ H = 218
 W = 170
 channels = 12
 batch_size = 8
-epochs = 100
+epochs = 1
 lr = 1e-4
 patience = 10
 sampling_mask_path = "../Data/poisson_sampling/R5_218x170.npy"
@@ -53,7 +55,7 @@ crop = (15, 15)
 verbose = True
 
 
-# In[23]:
+# In[12]:
 
 
 train = glob.glob(train_path + "*.h5")
@@ -78,9 +80,9 @@ if verbose:
 # Replicate sampling mask across number of channels
 var_sampling_mask = np.repeat(var_sampling_mask[:, :, :, np.newaxis], 24, axis = -1) 
 
-train_generator = DataGenerator(train, dim = (H, W), under_masks = var_sampling_mask,  crop = crop, batch_size = batch_size, n_channels = channels * 2, nslices = nslices, shuffle=True, acs = acs)
+train_generator = DataGenerator(train, dim = (H, W), under_masks = var_sampling_mask,  crop = crop,                            batch_size = batch_size, n_channels = channels * 2, nslices = nslices, shuffle=True, acs = acs)
 
-val_generator = DataGenerator(val, dim = (H, W), under_masks = var_sampling_mask,  crop = crop, batch_size = batch_size, n_channels = channels * 2, nslices= nslices, shuffle=False, acs = acs)
+val_generator = DataGenerator(val, dim = (H, W), under_masks = var_sampling_mask,  crop = crop,                            batch_size = batch_size, n_channels = channels * 2, nslices= nslices, shuffle=False, acs = acs)
 
 
 
