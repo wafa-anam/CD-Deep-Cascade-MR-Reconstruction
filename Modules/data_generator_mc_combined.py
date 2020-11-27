@@ -69,6 +69,8 @@ class DataGenerator(keras.utils.Sequence):
 				else:
 					idx = int((kspace.shape[2] - self.dim[1])/2)
 					X[ii,:,:,:] = kspace[self.crop[0]+file_slice,:,idx:-idx,:]
+		X = X/self.norm # Input is the zero-filled reconstruction. Suitable for image-domain methods. Change the code to not 
+                   # compute the iFFT if input needs to be in k-space.
 		aux = np.fft.ifft2(X[:,:,:,::2]+1j*X[:,:,:,1::2],axes = (1,2))
 		
 		S = utils.estimate_sensitivity_maps(X, self.acs)
@@ -81,9 +83,5 @@ class DataGenerator(keras.utils.Sequence):
 
 		# use sensitivities to combine reference
 		x_ref = utils.combine_mc_image(aux, S)
-
-
-		X = X/self.norm # Input is the zero-filled reconstruction. Suitable for image-domain methods. Change the code to not 
-                   # compute the iFFT if input needs to be in k-space.
 		
 		return [k_masked,k_masked_weighted,mask,S], x_ref
