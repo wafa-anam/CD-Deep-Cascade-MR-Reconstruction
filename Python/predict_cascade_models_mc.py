@@ -101,7 +101,6 @@ for ii in test_files:
     [k_space, weighted_k_space] = utils.combine_mc_kspace(kspace_test, S)
     pred = model.predict([ k_space, weighted_k_space, var_sampling_mask, S],batch_size = batch_size)*norm
     pred = pred[:,:,:,::2]+1j*pred[:,:,:,1::2]
-    pred = np.sqrt((np.abs(pred)**2).sum(axis = -1)) # Root sum of squares
 
     if verbose:
         print(os.path.join(results_path,name))
