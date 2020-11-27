@@ -40,7 +40,7 @@ H = 218
 W = 170
 channels = 12
 batch_size = 8
-epochs = 1
+epochs = 100
 lr = 1e-4
 patience = 10
 sampling_mask_path = "../Data/poisson_sampling/R5_218x170.npy"
@@ -102,7 +102,7 @@ if os.path.isfile(model_path):
 elif  cascade == 'unet':
     model = fsnet.deep_cascade_unet(depth_str = model_string, H = H, W = W, Hpad = Hpad, Wpad = Wpad, channels = channels) 
 elif cascade == 'flat':
-    model = fsnet.deep_cascade_flat_unrolled(depth_str = model_string, H = H,W = W,depth = 6, kshape = (3,3), nf = 64,channels = channels)
+    model = fsnet.deep_cascade_flat_unrolled(depth_str = model_string, H = H,W = W,depth = 6, kshape = (3,3),channels = channels)
 else:
    pass
 
